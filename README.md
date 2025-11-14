@@ -12,7 +12,7 @@ mysql -u root -p
 CREATE USER 'backup_user'@'localhost' IDENTIFIED BY 'your_strong_password';
 
 # 授予必要的权限
-GRANT SELECT, RELOAD, LOCK TABLES, REPLICATION CLIENT, SHOW VIEW, EVENT, TRIGGER ON *.* TO 'backup_user'@'localhost';
+GRANT SELECT, RELOAD, LOCK TABLES, PROCESS, REPLICATION CLIENT, SHOW VIEW, EVENT, TRIGGER ON *.* TO 'backup_user'@'localhost';
 
 # 刷新权限
 FLUSH PRIVILEGES;

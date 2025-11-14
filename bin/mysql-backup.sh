@@ -1,6 +1,7 @@
 #!/bin/bash
 # MySQL 自动备份脚本 (支持独立文件备份)
 # 路径: /usr/local/bin/mysql-backup.sh
+# (已包含所有错误捕获改进 + 非致命清理任务修复)
 
 set -euo pipefail
 
@@ -75,7 +76,7 @@ generate_backup_filename() {
     local db_name=$1
     local timestamp=$(date '+%Y%m%d_%H%M%S')
     local date=$(date '+%Y%m%d')
-    local time=$(date '+%H%M%S')
+    local time=$(date '+%Y%M%S')
 
     local filename="$BACKUP_FILENAME_FORMAT"
     filename="${filename//\{dbname\}/$db_name}"
@@ -86,24 +87,24 @@ generate_backup_filename() {
     echo "${filename}.sql"
 }
 
-# 备份单个数据库
+# 备份单个数据库 (已改进错误捕获)
 backup_database() {
     local db_name=$1
     local backup_file="${BACKUP_DIR}/$(generate_backup_filename "$db_name")"
     local compression_cmd=$(get_compression_cmd)
     local compression_ext=$(get_compression_ext)
 
+    # 创建一个临时文件来捕获 mysqldump 的 stderr
+    local error_log
+    error_log=$(mktemp "${BACKUP_DIR}/${db_name}_error.XXXXXX.log")
+
     log "INFO" "开始备份数据库: $db_name"
 
-    # 创建数据库专用目录 (可选)
-    # mkdir -p "${BACKUP_DIR}/${db_name}"
-    # backup_file="${BACKUP_DIR}/${db_name}/$(generate_backup_filename "$db_name")"
-
-    # 执行 mysqldump
+    # 执行 mysqldump，将 stderr 重定向到临时错误日志
     local start_time=$(date +%s)
 
     if mysqldump -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
-        $MYSQLDUMP_OPTS "$db_name" 2>/dev/null | $compression_cmd > "${backup_file}${compression_ext}"; then
+        $MYSQLDUMP_OPTS "$db_name" 2>"$error_log" | $compression_cmd > "${backup_file}${compression_ext}"; then
 
         local end_time=$(date +%s)
         local duration=$((end_time - start_time))
@@ -112,9 +113,24 @@ backup_database() {
         log "INFO" "备份成功: $db_name -> ${backup_file}${compression_ext} (大小: $file_size, 耗时: ${duration}s)"
         BACKUP_RESULTS["$db_name"]="SUCCESS:${file_size}:${duration}s"
         ((SUCCESS_BACKUPS++))
+        rm -f "$error_log" # 成功后删除空的错误日志
         return 0
     else
         log "ERROR" "备份失败: $db_name"
+
+        # 读取错误日志并打印到主日志，过滤掉密码警告
+        local error_message
+        error_message=$(grep -v "Warning: Using a password on the command line" "$error_log" || true)
+
+        if [[ -n "$error_message" ]]; then
+            log "ERROR" "mysqldump 错误: $error_message"
+        else
+            log "ERROR" "mysqldump 错误: (未知错误，请检查MySQL日志)"
+        fi
+
+        rm -f "$error_log" # 删除临时错误日志
+        rm -f "${backup_file}${compression_ext}" # 删除不完整或空的备份文件
+
         BACKUP_RESULTS["$db_name"]="FAILED"
         ((FAILED_BACKUPS++))
         return 1
@@ -128,6 +144,10 @@ backup_all_databases_single() {
     local compression_cmd=$(get_compression_cmd)
     local compression_ext=$(get_compression_ext)
 
+    # 创建一个临时文件来捕获 mysqldump 的 stderr
+    local error_log
+    error_log=$(mktemp "${BACKUP_DIR}/all_db_error.XXXXXX.log")
+
     log "INFO" "开始备份所有数据库到单个文件"
 
     local start_time=$(date +%s)
@@ -139,7 +159,7 @@ backup_all_databases_single() {
     done
 
     if mysqldump -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
-        $MYSQLDUMP_OPTS $db_list 2>/dev/null | $compression_cmd > "${backup_file}${compression_ext}"; then
+        $MYSQLDUMP_OPTS $db_list 2>"$error_log" | $compression_cmd > "${backup_file}${compression_ext}"; then
 
         local end_time=$(date +%s)
         local duration=$((end_time - start_time))
@@ -147,9 +167,24 @@ backup_all_databases_single() {
 
         log "INFO" "备份成功: ${backup_file}${compression_ext} (大小: $file_size, 耗时: ${duration}s)"
         ((SUCCESS_BACKUPS++))
+        rm -f "$error_log" # 成功后删除空的错误日志
         return 0
     else
         log "ERROR" "备份失败"
+
+        # 读取错误日志并打印到主日志
+        local error_message
+        error_message=$(grep -v "Warning: Using a password on the command line" "$error_log" || true)
+
+        if [[ -n "$error_message" ]]; then
+            log "ERROR" "mysqldump 错误: $error_message"
+        else
+            log "ERROR" "mysqldump 错误: (未知错误，请检查MySQL日志)"
+        fi
+
+        rm -f "$error_log" # 删除临时错误日志
+        rm -f "${backup_file}${compression_ext}" # 删除不完整或空的备份文件
+
         ((FAILED_BACKUPS++))
         return 1
     fi
@@ -229,19 +264,38 @@ cleanup_old_backups() {
 flush_mysql_logs() {
     if [[ "$FLUSH_LOGS" == "true" ]]; then
         log "INFO" "刷新 MySQL 日志"
-        mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
-            -e "FLUSH LOGS;" 2>/dev/null || log "WARN" "刷新日志失败"
+        # 捕获错误信息
+        local error_message
+        error_message=$(mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
+            -e "FLUSH LOGS;" 2>&1 | grep -v "Warning: Using a password on the command line" || true)
+
+        if [[ -n "$error_message" ]]; then
+            log "WARN" "刷新日志失败"
+            log "WARN" "MySQL 错误: $error_message"
+            return 1 # 返回失败
+        fi
     fi
+    return 0 # 成功或未启用
 }
 
-# 清理二进制日志
+# 清理二进制日志 (已改进错误捕获)
 purge_binary_logs() {
     if [[ "$PURGE_BINARY_LOGS" == "true" ]] && [[ $BINARY_LOGS_KEEP_DAYS -gt 0 ]]; then
         log "INFO" "清理 $BINARY_LOGS_KEEP_DAYS 天前的二进制日志"
-        mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
+
+        # 捕获错误信息
+        local error_message
+        error_message=$(mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
             -e "PURGE BINARY LOGS BEFORE DATE_SUB(NOW(), INTERVAL $BINARY_LOGS_KEEP_DAYS DAY);" \
-            2>/dev/null || log "WARN" "清理二进制日志失败"
+            2>&1 | grep -v "Warning: Using a password on the command line" || true)
+
+        if [[ -n "$error_message" ]]; then
+            log "WARN" "清理二进制日志失败"
+            log "WARN" "MySQL 错误: $error_message"
+            return 1 # 返回失败
+        fi
     fi
+    return 0 # 成功或未启用
 }
 
 # 重启 MySQL
@@ -251,13 +305,16 @@ restart_mysql() {
         if systemctl restart mysql 2>/dev/null || systemctl restart mysqld 2>/dev/null; then
             log "INFO" "MySQL 服务重启成功"
             sleep 5  # 等待服务完全启动
+            return 0
         else
             log "ERROR" "MySQL 服务重启失败"
+            return 1 # 返回失败
         fi
     fi
+    return 0 # 未启用
 }
 
-# 发送邮件通知
+# 发送邮件通知 (已改进错误捕获)
 send_email_notification() {
     local status=$1
     if [[ "$ENABLE_EMAIL_NOTIFY" == "true" ]]; then
@@ -275,8 +332,15 @@ send_email_notification() {
 
         body+="\n详细日志请查看: $LOG_FILE"
 
-        echo -e "$body" | mail -s "$EMAIL_SUBJECT - $status" "$EMAIL_TO" 2>/dev/null || \
+        # 捕获 mail 命令的错误
+        local error_message
+        error_message=$(echo -e "$body" | mail -s "$EMAIL_SUBJECT - $status" "$EMAIL_TO" 2>&1)
+
+        if [[ $? -ne 0 ]]; then
             log "WARN" "发送邮件通知失败"
+            log "WARN" "Mail 命令错误: $error_message"
+            # 邮件发送失败不应导致脚本失败，所以我们不返回 1
+        fi
     fi
 }
 
@@ -306,20 +370,31 @@ backup_databases_parallel() {
     local databases=("$@")
     local pids=()
     local running=0
+    local completed=0
 
     for db in "${databases[@]}"; do
         # 控制并行数量
         while [[ $running -ge $PARALLEL_BACKUPS ]]; do
+            # 检查已完成的进程
+            local new_pids=()
             for pid in "${pids[@]}"; do
                 if ! kill -0 "$pid" 2>/dev/null; then
                     wait "$pid" || true
                     running=$((running - 1))
+                    completed=$((completed + 1))
+                else
+                    new_pids+=("$pid")
                 fi
             done
-            sleep 1
+            pids=("${new_pids[@]}")
+
+            # 如果还是满载，等待一下
+            if [[ $running -ge $PARALLEL_BACKUPS ]]; then
+                sleep 1
+            fi
         done
 
-        # 启动备份进程
+        # 启动备份进程 (已修复: 添加 || true 以防止 set -e 退出)
         backup_database "$db" &
         pids+=($!)
         running=$((running + 1))
@@ -351,15 +426,17 @@ main() {
     # 执行备份
     if [[ "$BACKUP_MODE" == "single" ]]; then
         # 所有数据库备份到单个文件
-        backup_all_databases_single
+        backup_all_databases_single || true # 添加 || true
     else
         # 每个数据库独立备份
         if [[ $PARALLEL_BACKUPS -gt 1 ]]; then
             log "INFO" "使用并行备份 (并行数: $PARALLEL_BACKUPS)"
             backup_databases_parallel "${databases[@]}"
         else
+            log "INFO" "使用顺序备份模式"
             for db in "${databases[@]}"; do
-                backup_database "$db"
+                # (已修复: 添加 || true 以防止 set -e 在单个数据库失败时终止整个脚本)
+                backup_database "$db" || true
             done
         fi
     fi
@@ -371,9 +448,10 @@ main() {
     cleanup_old_backups
 
     # 执行后续操作
-    flush_mysql_logs
-    purge_binary_logs
-    restart_mysql
+    # (已修复: 添加 || true 以确保即使这些步骤失败，脚本也会继续发送邮件)
+    flush_mysql_logs || true
+    purge_binary_logs || true
+    restart_mysql || true
 
     log "INFO" "========== MySQL 备份任务完成 =========="
 
