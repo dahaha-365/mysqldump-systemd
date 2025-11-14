@@ -31,7 +31,7 @@ sudo mkdir -p /var/log/mysql-backup
 sudo chmod 755 /var/backups/mysql
 sudo chmod 755 /var/log/mysql-backup
 
-sudo cp ./config/backup.conf /etc/mysql-backup/backup.conf
+sudo cp ./conf/backup.conf /etc/mysql-backup/backup.conf
 sudo chmod 600 /etc/mysql-backup/backup.conf
 
 sudo cp ./bin/mysql-backup.sh /usr/local/bin/mysql-backup.sh
