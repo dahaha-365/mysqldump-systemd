@@ -1,0 +1,14 @@
+# 忽略常见的“过度严格”警告
+disable=SC1090,SC1091  # 忽略无法解析 sourced 文件的路径警告
+disable=SC2086         # 忽略未加引号的变量（如果脚本有意如此）
+disable=SC2154         # 忽略未定义变量的引用警告（需谨慎）
+disable=SC2155         # 忽略未使用函数的警告（需谨慎）
+disable=SC2153         # 忽略未使用的变量警告（需谨慎）
+disable=SC2012         # 忽略未使用的管道警告（需谨慎）
+disable=SC2207         # 忽略未使用的数组警告（需谨慎）
+
+# 强制解析为 bash 脚本
+shell=bash
+
+# 允许某些场景下的未使用变量
+enable=allow-unused-variables

@@ -1,0 +1,33 @@
+# MySQL 备份定时器
+# 路径: /etc/systemd/system/mysql-backup.timer
+
+[Unit]
+Description=MySQL Database Backup Timer
+Documentation=man:systemd.timer(5)
+Requires=mysql-backup.service
+
+[Timer]
+# 定时执行时间设置 (可根据需求修改)
+
+# 每天凌晨2点执行
+OnCalendar=daily
+# 或者使用具体时间: OnCalendar=*-*-* 02:00:00
+
+# 其他时间配置示例:
+# 每天凌晨3点: OnCalendar=*-*-* 03:00:00
+# 每周日凌晨2点: OnCalendar=Sun *-*-* 02:00:00
+# 每月1号凌晨2点: OnCalendar=*-*-01 02:00:00
+# 每6小时: OnCalendar=*-*-* 00/6:00:00
+# 每30分钟: OnCalendar=*:0/30
+
+# 如果错过了计划时间,系统启动后立即执行
+Persistent=true
+
+# 随机延迟 0-30 分钟,避免多个任务同时执行
+RandomizedDelaySec=30min
+
+# 精度设置
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

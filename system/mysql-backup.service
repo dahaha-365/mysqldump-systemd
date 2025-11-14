@@ -1,0 +1,41 @@
+# MySQL 备份服务单元
+# 路径: /etc/systemd/system/mysql-backup.service
+
+[Unit]
+Description=MySQL Database Backup Service
+Documentation=man:mysqldump(1)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+# 执行备份脚本
+ExecStart=/usr/local/bin/mysql-backup.sh
+
+# 标准输出和错误输出
+StandardOutput=journal
+StandardError=journal
+
+# 超时设置 (30分钟)
+TimeoutStartSec=1800
+
+# 资源限制
+Nice=19
+IOSchedulingClass=idle
+CPUQuota=50%
+
+# 安全设置
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/mysql /var/log/mysql-backup
+
+# 环境变量
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target
