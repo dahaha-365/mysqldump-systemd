@@ -14,6 +14,8 @@ fi
 
 source "$CONFIG_FILE"
 
+export MYSQL_PWD="$MYSQL_PASSWORD"
+
 # 创建必要的目录
 mkdir -p "$BACKUP_DIR"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -103,7 +105,7 @@ backup_database() {
     # 执行 mysqldump，将 stderr 重定向到临时错误日志
     local start_time=$(date +%s)
 
-    if mysqldump -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
+    if mysqldump -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" \
         $MYSQLDUMP_OPTS "$db_name" 2>"$error_log" | $compression_cmd > "${backup_file}${compression_ext}"; then
 
         local end_time=$(date +%s)
@@ -158,7 +160,7 @@ backup_all_databases_single() {
         db_list="$db_list --databases $db"
     done
 
-    if mysqldump -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
+    if mysqldump -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" \
         $MYSQLDUMP_OPTS $db_list 2>"$error_log" | $compression_cmd > "${backup_file}${compression_ext}"; then
 
         local end_time=$(date +%s)
@@ -195,7 +197,7 @@ get_databases() {
     local db_list=""
 
     if [[ "$DATABASES" == "all" ]]; then
-        db_list=$(mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
+        db_list=$(mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" \
             -e "SHOW DATABASES;" 2>/dev/null | grep -Ev "^Database$")
     else
         db_list="$DATABASES"
@@ -266,7 +268,7 @@ flush_mysql_logs() {
         log "INFO" "刷新 MySQL 日志"
         # 捕获错误信息
         local error_message
-        error_message=$(mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
+        error_message=$(mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" \
             -e "FLUSH LOGS;" 2>&1 | grep -v "Warning: Using a password on the command line" || true)
 
         if [[ -n "$error_message" ]]; then
@@ -285,7 +287,7 @@ purge_binary_logs() {
 
         # 捕获错误信息
         local error_message
-        error_message=$(mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" \
+        error_message=$(mysql -h"$MYSQL_HOST" -P"$MYSQL_PORT" -u"$MYSQL_USER" \
             -e "PURGE BINARY LOGS BEFORE DATE_SUB(NOW(), INTERVAL $BINARY_LOGS_KEEP_DAYS DAY);" \
             2>&1 | grep -v "Warning: Using a password on the command line" || true)
 
