@@ -336,7 +336,7 @@ send_email_notification() {
 
         # 捕获 mail 命令的错误
         local error_message
-        error_message=$(echo -e "$body" | mail -s "$EMAIL_SUBJECT - $status" "$EMAIL_TO" 2>&1)
+        error_message=$(echo -e "$body" | mail -s "$EMAIL_SUBJECT - $status" -r "$EMAIL_FROM" "$EMAIL_TO" 2>&1)
 
         if [[ $? -ne 0 ]]; then
             log "WARN" "发送邮件通知失败"
