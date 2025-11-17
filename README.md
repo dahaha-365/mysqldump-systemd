@@ -1,5 +1,13 @@
 # MySQL 自动备份系统安装指南
 
+> [!CAUTION]
+> 安装前请认真阅读此文档，确保您已了解 MySQL 权限系统和备份原理。
+> 没有基础的用户不建议直接安装此系统。
+> 安装前请备份好数据库，以防意外发生。
+> 安装完成后，请检查 `/etc/mysql-backup/backup.conf` 配置文件，确保数据库连接配置正确。
+
+这个系统是通过 mysqldump 工具来备份 MySQL 数据库的。对于平时接外快的小项目是比较方便的，但是对于大项目还是建议使用专业的备份工具。
+
 ## 一、准备工作
 
 ### 1. 创建 MySQL 备份用户
@@ -12,7 +20,7 @@ mysql -u root -p
 CREATE USER 'backup_user'@'localhost' IDENTIFIED BY 'your_strong_password';
 
 # 授予必要的权限
-GRANT SELECT, RELOAD, LOCK TABLES, PROCESS, REPLICATION CLIENT, SHOW VIEW, EVENT, TRIGGER ON *.* TO 'backup_user'@'localhost';
+GRANT SELECT, RELOAD, BINLOG_ADMIN, LOCK TABLES, PROCESS, REPLICATION CLIENT, SHOW VIEW, EVENT, TRIGGER ON *.* TO 'backup_user'@'localhost';
 
 # 刷新权限
 FLUSH PRIVILEGES;
@@ -39,6 +47,9 @@ sudo chmod 755 /var/log/mysql-backup
 ```
 
 ## 二、安装文件
+
+> [!TIP] 捷径
+> 直接运行 `install.sh` 脚本即可完成安装。
 
 ### 1. 复制配置文件
 
@@ -273,13 +284,58 @@ DATABASE_RETENTION["test_db"]="3:5"           # 测试库只保留3天或5个
 
 ### 配置邮件通知
 
+> [!NOTE]
+> 此处以QQ邮箱为例，其他邮箱配置类似。SMTP服务需要自行在邮箱设置中开启。
+
+> [!TIP]
+> 如果遇到邮件发送失败问题，检查postfix服务是否运行正常。
+
+
 ```bash
 # 安装 mailutils
 sudo apt-get install mailutils  # Debian/Ubuntu
 sudo yum install mailx          # CentOS/RHEL
 
+# 配置postfix发送邮件
+sudo apt-get install postfix  # Debian/Ubuntu
+sudo yum install postfix      # CentOS/RHEL
+
+# 修改 postfix 配置 smtp，以 QQ 邮箱为例
+sudo vi /etc/postfix/main.cf
+
+# 配置中继服务器（QQ 邮箱 SMTP 地址）
+relayhost = [smtp.qq.com]:587
+
+# 启用 SASL 认证（用于 QQ 邮箱登录验证）
+smtp_sasl_auth_enable = yes
+smtp_sasl_security_options = noanonymous
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+
+# 启用 TLS 加密（QQ 邮箱要求加密连接）
+smtp_use_tls = yes
+smtp_tls_CAfile = /etc/pki/tls/certs/ca-bundle.crt
+smtp_tls_session_cache_database = btree:/var/lib/postfix/smtp_tls_session_cache
+
+# 保存并退出
+
+# 配置 QQ 邮箱登录密码
+echo "[smtp.qq.com]:587 admin@example.com:授权码" | sudo tee -a /etc/postfix/sasl_passwd
+
+# 保存并退出
+
+# 生成 postfix 密码数据库
+sudo postmap /etc/postfix/sasl_passwd
+
+# 设置 postfix 密码数据库权限
+sudo chown root:root /etc/postfix/sasl_passwd.db /etc/postfix/sasl_passwd
+sudo chmod 600 /etc/postfix/sasl_passwd.db /etc/postfix/sasl_passwd
+
+# 重启 postfix 服务
+sudo systemctl restart postfix
+
 # 在配置文件中启用邮件通知
 ENABLE_EMAIL_NOTIFY=true
+EMAIL_FROM="admin@example.com"
 EMAIL_TO="admin@example.com"
 ```
 
