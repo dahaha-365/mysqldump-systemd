@@ -32,7 +32,7 @@ PrivateTmp=true
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/backups/mysql /var/log/mysql-backup
+ReadWritePaths=/var/backups/mysql /var/log/mysql-backup /var/spool/postfix /var/run/postfix
 
 # 环境变量
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
