@@ -1,4 +1,5 @@
 # MySQL 自动备份系统安装指南
+<img width="1007" height="447" alt="image" src="https://github.com/user-attachments/assets/1dd1ac3e-9c8f-45ea-9ee5-cf94249b2057" />
 
 > [!CAUTION]
 > 安装前请认真阅读此文档，确保您已了解 MySQL 权限系统和备份原理。
