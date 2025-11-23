@@ -6,6 +6,7 @@ disable=SC2155         # 忽略未使用函数的警告（需谨慎）
 disable=SC2153         # 忽略未使用的变量警告（需谨慎）
 disable=SC2012         # 忽略未使用的管道警告（需谨慎）
 disable=SC2207         # 忽略未使用的数组警告（需谨慎）
+disable=SC2034         # 忽略未使用的函数警告（需谨慎）
 
 # 强制解析为 bash 脚本
 shell=bash
